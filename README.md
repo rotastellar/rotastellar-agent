@@ -1,21 +1,25 @@
 # RotaStellar Operator Agent
 
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![GitHub](https://img.shields.io/github/stars/rotastellar/rotastellar-agent?style=social)](https://github.com/rotastellar/rotastellar-agent)
+
 The execution layer for orbital compute. A Rust SDK for running workloads on satellites using a pull-based agent protocol.
 
 ## Architecture
 
 ```
 Satellite                          RotaStellar Console
-┌─────────────────┐               ┌─────────────────────┐
-│ rotastellar-agent│◄── poll ────►│ GET /api/agent/      │
-│                  │               │     workloads        │
-│  ┌────────────┐  │               │                     │
-│  │ Execute    │  │── events ──►│ POST /api/deployments│
-│  │ workload   │  │               │      /{id}/events   │
-│  └────────────┘  │               │                     │
-│                  │── telemetry─►│ POST /api/agent/     │
-│                  │               │      telemetry       │
-└─────────────────┘               └─────────────────────┘
+┌───────────────────┐               ┌────────────────────────────┐
+│ rotastellar-agent │◄── poll ────► │ GET /api/agent/workloads   │
+│                   │               │                            │
+│  ┌────────────┐   │               │                            │
+│  │ Execute    │   │──  events ──► │ POST /api/deployments      │
+│  │ workload   │   │               │      /{id}/events          │
+│  └────────────┘   │               │                            │
+│                   │── telemetry─► │ POST /api/agent/           │
+│                   │               │      telemetry             │
+└───────────────────┘               └────────────────────────────┘
 ```
 
 ## Protocol
