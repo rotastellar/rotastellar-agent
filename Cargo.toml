@@ -20,6 +20,9 @@ uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
 anyhow = "1"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util", "macros"] }
+
 [[bin]]
 name = "rotastellar-agent"
 path = "src/bin/simulate.rs"

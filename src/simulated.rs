@@ -166,10 +166,8 @@ impl Agent for SimulatedSatellite {
             }
 
             if self.running.load(Ordering::Relaxed) {
-                tokio::time::sleep(std::time::Duration::from_secs(
-                    self.config.poll_interval_s,
-                ))
-                .await;
+                tokio::time::sleep(std::time::Duration::from_secs(self.config.poll_interval_s))
+                    .await;
             }
         }
 
@@ -180,5 +178,85 @@ impl Agent for SimulatedSatellite {
         self.running.store(false, Ordering::Relaxed);
         info!("Agent stopped");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn test_config() -> AgentConfig {
+        AgentConfig {
+            agent_id: "test-sat".into(),
+            api_url: "http://127.0.0.1:1".into(), // unreachable, for testing
+            api_key: "rs_test".into(),
+            poll_interval_s: 1,
+        }
+    }
+
+    #[test]
+    fn test_new_creates_satellite() {
+        let sat = SimulatedSatellite::new(test_config(), 100.0);
+        assert!(sat.is_ok());
+        let sat = sat.unwrap();
+        assert_eq!(sat.speed_multiplier, 100.0);
+        assert!(!sat.running.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_execute_empty_events() {
+        let sat = SimulatedSatellite::new(test_config(), 100.0).unwrap();
+        sat.running.store(true, Ordering::Relaxed);
+
+        let workload = WorkloadSpec {
+            plan_id: "p1".into(),
+            deployment_id: "d1".into(),
+            satellite_id: "25544".into(),
+            plan_data: json!({}),
+            events: vec![],
+        };
+        let result = sat.execute(&workload).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No events"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_processes_events() {
+        // Events with failing HTTP client (connection refused) — errors are warned, not fatal
+        let sat = SimulatedSatellite::new(test_config(), 10000.0).unwrap();
+        sat.running.store(true, Ordering::Relaxed);
+
+        let workload = WorkloadSpec {
+            plan_id: "p1".into(),
+            deployment_id: "d1".into(),
+            satellite_id: "25544".into(),
+            plan_data: json!({}),
+            events: vec![
+                AgentEvent {
+                    event_type: "job.accepted".into(),
+                    timestamp: "2026-03-07T12:00:00Z".into(),
+                    job_id: "j1".into(),
+                    step_id: None,
+                    payload: json!({}),
+                },
+                AgentEvent {
+                    event_type: "step.started".into(),
+                    timestamp: "2026-03-07T12:00:10Z".into(),
+                    job_id: "j1".into(),
+                    step_id: Some("s1".into()),
+                    payload: json!({}),
+                },
+                AgentEvent {
+                    event_type: "job.completed".into(),
+                    timestamp: "2026-03-07T12:00:20Z".into(),
+                    job_id: "j1".into(),
+                    step_id: None,
+                    payload: json!({"status": "success"}),
+                },
+            ],
+        };
+        let result = sat.execute(&workload).await;
+        assert!(result.is_ok());
     }
 }

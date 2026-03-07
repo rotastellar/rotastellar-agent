@@ -53,3 +53,26 @@ pub enum AgentError {
     #[error("Agent stopped")]
     Stopped,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_error_api_display() {
+        let err = AgentError::ApiError("timeout".into());
+        assert_eq!(err.to_string(), "API request failed: timeout");
+    }
+
+    #[test]
+    fn test_agent_error_execution_display() {
+        let err = AgentError::ExecutionError("step failed".into());
+        assert_eq!(err.to_string(), "Execution error: step failed");
+    }
+
+    #[test]
+    fn test_agent_error_stopped_display() {
+        let err = AgentError::Stopped;
+        assert_eq!(err.to_string(), "Agent stopped");
+    }
+}
