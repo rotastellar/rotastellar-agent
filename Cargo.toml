@@ -3,7 +3,7 @@ name = "rotastellar-agent"
 version = "0.1.0"
 edition = "2021"
 description = "RotaStellar Operator Agent SDK — execute orbital compute workloads on satellites"
-license = "Apache-2.0"
+license = "MPL-2.0"
 repository = "https://github.com/rotastellar/rotastellar-agent"
 
 [dependencies]

@@ -1,7 +1,7 @@
 # RotaStellar Operator Agent
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-MPL--2.0-blue)](LICENSE)
 [![GitHub](https://img.shields.io/github/stars/rotastellar/rotastellar-agent?style=social)](https://github.com/rotastellar/rotastellar-agent)
 
 The execution layer for orbital compute. A Rust SDK for running workloads on satellites using a pull-based agent protocol.
@@ -129,4 +129,4 @@ cargo build --release
 
 ## License
 
-Apache-2.0
+MPL-2.0
