@@ -1,7 +1,7 @@
 use reqwest::Client;
 
-use crate::types::{AgentConfig, AgentEvent, AgentTelemetry, WorkloadSpec};
 use crate::agent::AgentError;
+use crate::types::{AgentConfig, AgentEvent, AgentTelemetry, WorkloadSpec};
 
 /// HTTP client for communicating with the RotaStellar Console API.
 pub struct ConsoleClient {
@@ -21,7 +21,8 @@ impl ConsoleClient {
     /// Poll for pending workloads assigned to this agent.
     pub async fn poll_workloads(&self) -> Result<Option<WorkloadSpec>, AgentError> {
         let url = format!("{}/api/agent/workloads", self.config.api_url);
-        let resp = self.http
+        let resp = self
+            .http
             .get(&url)
             .header("X-API-Key", &self.config.api_key)
             .header("X-Agent-ID", &self.config.agent_id)
@@ -43,12 +44,17 @@ impl ConsoleClient {
     }
 
     /// Report an execution event.
-    pub async fn report_event(&self, deployment_id: &str, event: &AgentEvent) -> Result<(), AgentError> {
+    pub async fn report_event(
+        &self,
+        deployment_id: &str,
+        event: &AgentEvent,
+    ) -> Result<(), AgentError> {
         let url = format!(
             "{}/api/deployments/{}/events",
             self.config.api_url, deployment_id
         );
-        let resp = self.http
+        let resp = self
+            .http
             .post(&url)
             .header("X-API-Key", &self.config.api_key)
             .header("X-Agent-ID", &self.config.agent_id)
@@ -68,7 +74,8 @@ impl ConsoleClient {
     /// Report telemetry / heartbeat.
     pub async fn report_telemetry(&self, telemetry: &AgentTelemetry) -> Result<(), AgentError> {
         let url = format!("{}/api/agent/telemetry", self.config.api_url);
-        let resp = self.http
+        let resp = self
+            .http
             .post(&url)
             .header("X-API-Key", &self.config.api_key)
             .header("X-Agent-ID", &self.config.agent_id)
