@@ -1,0 +1,25 @@
+[package]
+name = "rotastellar-agent"
+version = "0.1.0"
+edition = "2021"
+description = "RotaStellar Operator Agent SDK — execute orbital compute workloads on satellites"
+license = "Apache-2.0"
+repository = "https://github.com/rotastellar/rotastellar-agent"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive", "env"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4"] }
+thiserror = "1"
+anyhow = "1"
+
+[[bin]]
+name = "rotastellar-agent"
+path = "src/bin/simulate.rs"
