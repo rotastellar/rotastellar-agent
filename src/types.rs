@@ -37,10 +37,25 @@ pub struct AgentConfig {
     pub api_key: String,
     #[serde(default = "default_poll_interval")]
     pub poll_interval_s: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub satellite_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub satellite_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sim_url: Option<String>,
 }
 
 fn default_poll_interval() -> u64 {
     30
+}
+
+/// Satellite position from the simulation service.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Position {
+    pub lat: f64,
+    pub lon: f64,
+    pub altitude_km: f64,
+    pub in_eclipse: bool,
 }
 
 /// Telemetry data reported by an agent.
@@ -57,6 +72,10 @@ pub struct AgentTelemetry {
     pub battery_percent: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature_c: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compute_capacity: Option<f64>,
 }
 
 /// Agent operational status.
@@ -161,11 +180,20 @@ mod tests {
             memory_mb: Some(128.0),
             battery_percent: Some(82.0),
             temperature_c: Some(34.2),
+            position: Some(Position {
+                lat: 42.36,
+                lon: -71.06,
+                altitude_km: 550.0,
+                in_eclipse: false,
+            }),
+            compute_capacity: Some(1.0),
         };
         let json_str = serde_json::to_string(&full).unwrap();
         assert!(json_str.contains("\"cpu_percent\":67.5"));
+        assert!(json_str.contains("\"position\""));
         let decoded: AgentTelemetry = serde_json::from_str(&json_str).unwrap();
         assert_eq!(decoded.cpu_percent, Some(67.5));
+        assert_eq!(decoded.position.as_ref().unwrap().lat, 42.36);
 
         // With optional fields omitted
         let minimal = AgentTelemetry {
@@ -176,9 +204,12 @@ mod tests {
             memory_mb: None,
             battery_percent: None,
             temperature_c: None,
+            position: None,
+            compute_capacity: None,
         };
         let json_str = serde_json::to_string(&minimal).unwrap();
         assert!(!json_str.contains("cpu_percent"));
+        assert!(!json_str.contains("position"));
     }
 
     #[test]

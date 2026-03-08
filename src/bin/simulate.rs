@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
-use rotastellar_agent::{Agent, AgentConfig, SimulatedSatellite, WorkloadSpec};
+use rotastellar_agent::{
+    Agent, AgentConfig, OrbitalElements, SimulatedSatellite, WorkloadSpec,
+    simulated::start_agent_with_telemetry,
+};
 
 #[derive(Parser)]
 #[command(name = "rotastellar-agent")]
@@ -46,11 +49,11 @@ enum Commands {
         agent_id: String,
 
         /// Console API URL
-        #[arg(long, default_value = "https://console.rotastellar.com")]
+        #[arg(long, default_value = "https://runtime.rotastellar.com", env = "API_URL")]
         api_url: String,
 
         /// API key for authentication
-        #[arg(long, env = "ROTASTELLAR_API_KEY")]
+        #[arg(long, env = "API_KEY")]
         api_key: String,
 
         /// Poll interval in seconds
@@ -60,6 +63,22 @@ enum Commands {
         /// Simulation speed (for simulated workloads)
         #[arg(long, default_value = "100")]
         speed: f64,
+
+        /// Simulation service URL for orbital state
+        #[arg(long, env = "SIM_URL")]
+        sim_url: Option<String>,
+
+        /// Satellite NORAD ID
+        #[arg(long, env = "SATELLITE_ID")]
+        satellite_id: Option<String>,
+
+        /// Satellite display name
+        #[arg(long, env = "SATELLITE_NAME")]
+        satellite_name: Option<String>,
+
+        /// Orbital elements as JSON string
+        #[arg(long, env = "ORBITAL_ELEMENTS")]
+        orbital_elements: Option<String>,
     },
 }
 
@@ -89,6 +108,9 @@ async fn main() -> anyhow::Result<()> {
                 api_url,
                 api_key: api_key.unwrap_or_default(),
                 poll_interval_s: 30,
+                satellite_id: None,
+                satellite_name: None,
+                sim_url: None,
             };
 
             let agent = SimulatedSatellite::new(config, speed)?;
@@ -109,16 +131,34 @@ async fn main() -> anyhow::Result<()> {
             api_key,
             poll_interval,
             speed,
+            sim_url,
+            satellite_id,
+            satellite_name,
+            orbital_elements,
         } => {
+            // Parse orbital elements if provided
+            let elements: Option<OrbitalElements> = orbital_elements
+                .as_ref()
+                .map(|json_str| serde_json::from_str(json_str))
+                .transpose()?;
+
             let config = AgentConfig {
                 agent_id,
                 api_url,
                 api_key,
                 poll_interval_s: poll_interval,
+                satellite_id,
+                satellite_name,
+                sim_url,
             };
 
-            let agent = SimulatedSatellite::new(config, speed)?;
-            agent.start().await?;
+            // Use the telemetry-enabled start if sim is configured
+            if config.sim_url.is_some() {
+                start_agent_with_telemetry(config, speed, elements).await?;
+            } else {
+                let agent = SimulatedSatellite::new(config, speed)?;
+                agent.start().await?;
+            }
         }
     }
 

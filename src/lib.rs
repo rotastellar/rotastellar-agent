@@ -21,9 +21,12 @@
 //! async fn main() {
 //!     let config = AgentConfig {
 //!         agent_id: "sat-001".into(),
-//!         api_url: "https://console.rotastellar.com".into(),
+//!         api_url: "https://runtime.rotastellar.com".into(),
 //!         api_key: "rs_...".into(),
 //!         poll_interval_s: 30,
+//!         satellite_id: Some("99901".into()),
+//!         satellite_name: Some("RS-LEO-1".into()),
+//!         sim_url: Some("https://sim.rotastellar.com".into()),
 //!     };
 //!
 //!     let agent = SimulatedSatellite::new(config, 100.0).unwrap();
@@ -33,11 +36,15 @@
 
 pub mod agent;
 pub mod client;
+pub mod sim_client;
 pub mod simulated;
 pub mod types;
 
 // Re-export core types for convenience
 pub use agent::{Agent, AgentError};
 pub use client::ConsoleClient;
+pub use sim_client::{OrbitalElements, OrbitalState, SatelliteState, SimClient};
 pub use simulated::SimulatedSatellite;
-pub use types::{AgentConfig, AgentEvent, AgentStatus, AgentTelemetry, WorkloadSpec};
+pub use types::{
+    AgentConfig, AgentEvent, AgentStatus, AgentTelemetry, Position, WorkloadSpec,
+};
