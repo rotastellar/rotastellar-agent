@@ -109,6 +109,12 @@ pub struct SatelliteState {
     pub last_update: DateTime<Utc>,
 }
 
+impl Default for SatelliteState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SatelliteState {
     pub fn new() -> Self {
         Self {

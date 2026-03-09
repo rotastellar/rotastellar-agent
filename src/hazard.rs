@@ -288,7 +288,7 @@ fn propagate_trajectory(
             eci_z,
         });
 
-        t = t + Duration::seconds(PROPAGATION_STEP_S as i64);
+        t += Duration::seconds(PROPAGATION_STEP_S as i64);
     }
 
     trajectory
