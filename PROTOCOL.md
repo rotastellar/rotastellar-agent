@@ -222,6 +222,51 @@ The protocol uses the same event format as the CAE simulator. All events have th
 | Type | Description | Payload |
 |------|-------------|---------|
 | `checkpoint.saved` | State persisted | `checkpoint_number`, `progress_fraction` |
+| `checkpoint.predicted` | Hazard prediction generated (I-4) | `hazards_count`, `checkpoints_count`, `next_hazard`, `max_safe_window_s`, `overhead_fraction`, `hazards`, `checkpoint_schedule` |
+
+### Orbital Compute Primitive Events (I-1)
+
+<!-- subhadipmitra, 2026-03-09: OCP events are emitted by the CAE simulator
+     and enriched by the agent with actual satellite state at execution time. -->
+
+**Eclipse-Step Events** — Steps that run during battery-only eclipse phases.
+
+| Type | Description | Payload |
+|------|-------------|---------|
+| `eclipse_step.started` | Eclipse step begins | `energy_budget_j`, `eclipse_policy`, `actual_battery_wh`, `max_available_energy_j` |
+| `eclipse_step.energy_check` | Energy at 50% budget | `energy_remaining_j`, `actual_battery_wh` |
+| `eclipse_step.completed` | Eclipse step finished | `energy_consumed_j`, `actual_battery_wh`, `actual_temperature_c` |
+
+**Window-Step Events** — Adaptive quality steps that select tiers based on available window time.
+
+| Type | Description | Payload |
+|------|-------------|---------|
+| `window_step.started` | Window step begins with tier | `planned_tier`, `quality_tiers`, `actual_battery_percent`, `compute_capacity` |
+| `window_step.degraded` | Tier downgraded at runtime | `from_tier`, `to_tier`, `reason` |
+| `window_step.upgraded` | Tier upgraded (more time available) | `from_tier`, `to_tier` |
+| `window_step.completed` | Window step finished | `achieved_tier`, `output_quality`, `degradations` |
+
+**Pass-Step Events** — Atomic steps decomposed around ground contact windows.
+
+| Type | Description | Payload |
+|------|-------------|---------|
+| `pass_step.started` | Pass step begins | `sequence_index`, `sequence_total`, `actual_battery_percent` |
+| `pass_step.completed` | Pass step finished | `sequence_index`, `sequence_total`, `merge_strategy` |
+
+The agent enriches all OCP events with `actual_battery_percent` and (for eclipse steps) `actual_temperature_c`. If OCP preconditions don't match actual satellite state, an `ocp_warning` field is added to the event payload.
+
+### ISL Transfer Events (I-3)
+
+<!-- subhadipmitra, 2026-03-09: I-3 Constellation DAG events for ISL data
+     routing and multi-satellite workflow coordination. -->
+
+| Type | Description | Payload |
+|------|-------------|---------|
+| `isl_transfer.started` | ISL data transfer initiated | `src_satellite`, `dst_satellite`, `data_mb`, `hops`, `route` |
+| `isl_transfer.hop_completed` | One ISL hop completed | `from`, `to`, `data_mb`, `hop_index`, `hop_total` |
+| `isl_transfer.completed` | Full ISL transfer done | `total_time_s`, `total_data_mb`, `hops`, `reliability` |
+| `constellation.step_assigned` | Step assigned to this satellite | `step_id`, `step_name`, `satellite_id`, `window_id` |
+| `constellation.failover` | Step failed, reassigning | `step_id`, `from_satellite`, `to_satellite`, `reason` |
 
 ## Error Handling
 
@@ -267,3 +312,42 @@ User-Agent: rotastellar-agent/0.1.0
 ```
 
 Breaking changes will increment the minor version until 1.0. After 1.0, semantic versioning applies.
+
+## Constellation Execution (WS4)
+
+When executing a constellation DAG workload, the agent tracks multi-satellite coordination:
+
+### Constellation Events
+
+| Event Type | Direction | Description |
+|-----------|-----------|-------------|
+| `constellation.step_assigned` | CAE → Agent | Step from DAG assigned to this satellite |
+| `constellation.step_started` | Agent → Console | Agent began executing a DAG step |
+| `constellation.step_completed` | Agent → Console | DAG step finished successfully |
+| `constellation.failover` | Agent → Console | Step failed, needs reassignment |
+| `constellation.failover_acknowledged` | Agent → Console | Satellite confirmed step handoff |
+| `constellation.satellite_complete` | Agent → Console | All assigned steps done on this satellite |
+
+### ISL Transfer Events
+
+| Event Type | Direction | Description |
+|-----------|-----------|-------------|
+| `isl_transfer.started` | CAE → Agent | ISL data transfer initiated |
+| `isl_transfer.hop_completed` | Agent → Console | One ISL hop completed with quality metrics |
+| `isl_transfer.completed` | Agent → Console | Full ISL transfer done |
+| `isl_transfer.quality_report` | Agent → Console | Link quality summary (avg quality, latency, bandwidth) |
+
+### Failover Conditions
+
+The agent automatically triggers failover when:
+- Battery below 10% (critical power loss)
+- Temperature above 75°C (thermal protection)
+- Compute unavailable (battery below 15%)
+
+### ISL Link Quality Model
+
+ISL hop quality is computed from actual satellite state:
+- **Distance factor**: `1 - (distance_km / 5000) * 0.6`
+- **Eclipse penalty**: `0.9` if either endpoint is in eclipse
+- **Effective bandwidth**: `100 Mbps * quality`
+- **Latency**: `distance_km / c + 2ms` (processing overhead)

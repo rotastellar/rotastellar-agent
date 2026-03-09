@@ -41,6 +41,9 @@ pub mod ocp;
 // subhadipmitra, 2026-03-09: I-4 HazardPredictor — deterministic eclipse-boundary
 // state preservation via hazard-predictive checkpointing.
 pub mod hazard;
+// subhadipmitra, 2026-03-10: WS4 — Constellation executor for multi-satellite DAG
+// orchestration with ISL coordination and failover.
+pub mod constellation;
 pub mod sim_client;
 pub mod simulated;
 pub mod types;

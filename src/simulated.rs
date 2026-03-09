@@ -8,6 +8,12 @@ use tracing::{info, warn};
 
 use crate::agent::{Agent, AgentError};
 use crate::client::ConsoleClient;
+// subhadipmitra, 2026-03-09: OCP runtime enrichment for eclipse/window/pass events.
+use crate::ocp;
+// subhadipmitra, 2026-03-09: I-4 HazardPredictor for checkpoint scheduling.
+use crate::hazard;
+// subhadipmitra, 2026-03-10: WS4 — Constellation executor for multi-satellite DAG.
+use crate::constellation;
 use crate::sim_client::{OrbitalElements, SimClient, SatelliteState};
 use crate::types::{
     AgentConfig, AgentEvent, AgentStatus, AgentTelemetry, Position, WorkloadSpec,
@@ -209,6 +215,58 @@ impl Agent for SimulatedSatellite {
             "Starting simulated execution"
         );
 
+        // subhadipmitra, 2026-03-09: I-4 — predict hazards before execution
+        // and emit a checkpoint.predicted event with the schedule. The agent
+        // will insert checkpoint.saved events at the predicted times.
+        if let Some(ref elements) = self.orbital_elements {
+            let prediction = hazard::predict_hazards(
+                elements,
+                Utc::now(),
+                6.0,           // 6-hour horizon
+                50_000_000,    // 50 MB state size
+                10_000_000,    // 10 MB/s flash bandwidth
+            );
+
+            if prediction.summary.total_hazards > 0 {
+                info!(
+                    hazards = prediction.summary.total_hazards,
+                    checkpoints = prediction.summary.total_checkpoints,
+                    next_hazard = ?prediction.summary.next_hazard,
+                    overhead = prediction.summary.checkpoint_overhead_fraction,
+                    "Hazard prediction complete"
+                );
+
+                let prediction_event = AgentEvent {
+                    event_type: "checkpoint.predicted".into(),
+                    timestamp: Utc::now().to_rfc3339(),
+                    job_id: workload.events.first().map(|e| e.job_id.clone()).unwrap_or_default(),
+                    step_id: None,
+                    payload: serde_json::json!({
+                        "hazards_count": prediction.summary.total_hazards,
+                        "checkpoints_count": prediction.summary.total_checkpoints,
+                        "next_hazard": prediction.summary.next_hazard,
+                        "max_safe_window_s": prediction.summary.max_safe_compute_window_s,
+                        "overhead_fraction": prediction.summary.checkpoint_overhead_fraction,
+                        "hazards": prediction.hazards,
+                        "checkpoint_schedule": prediction.checkpoint_schedule,
+                    }),
+                };
+
+                self.client
+                    .report_event(&workload.deployment_id, &prediction_event)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!(error = %e, "Failed to report hazard prediction");
+                    });
+            }
+        }
+
+        // subhadipmitra, 2026-03-10: WS4 — Initialize constellation state for
+        // tracking DAG step assignments, ISL transfers, and failover.
+        let mut constellation_state = constellation::ConstellationState::new(
+            self.config.satellite_id.clone().unwrap_or_else(|| self.config.agent_id.clone()),
+        );
+
         let first_ts = Self::parse_timestamp(&events[0].timestamp);
 
         for (i, event) in events.iter().enumerate() {
@@ -237,9 +295,89 @@ impl Agent for SimulatedSatellite {
                 }
             }
 
-            // Report event to Console API
+            // subhadipmitra, 2026-03-10: WS4 — Process constellation events through
+            // the ConstellationExecutor. Handles step assignment, ISL transfers with
+            // actual link quality, failover detection, and progress tracking.
+            if constellation::is_constellation_event(event) {
+                let state = self.sat_state.lock().await;
+                let position = self.update_orbital_state().await;
+                let pos_ref = position.as_ref();
+
+                // Check if satellite should fail over this step
+                if event.event_type == "constellation.step_started" {
+                    if let Some(reason) = constellation::check_failover_condition(&state, pos_ref) {
+                        warn!(reason = %reason, "Failover condition detected");
+                        // Emit failover event instead of starting the step
+                        let failover_event = AgentEvent {
+                            event_type: "constellation.failover".to_string(),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                            job_id: event.job_id.clone(),
+                            step_id: event.step_id.clone(),
+                            payload: serde_json::json!({
+                                "satellite_id": self.config.satellite_id,
+                                "reason": reason,
+                            }),
+                        };
+                        self.report_event(&failover_event).await.ok();
+                    }
+                }
+
+                // Process through constellation state machine
+                let extra_events = constellation::handle_event(
+                    event,
+                    &mut constellation_state,
+                    &state,
+                    pos_ref,
+                );
+
+                // Report any extra events generated
+                for extra in &extra_events {
+                    self.report_event(extra).await.ok();
+                }
+
+                // Update agent status for ISL transfers
+                if event.event_type == "isl_transfer.started" {
+                    let mut status = self.status.lock().await;
+                    *status = AgentStatus::Transferring;
+                } else if event.event_type == "isl_transfer.completed" {
+                    let mut status = self.status.lock().await;
+                    *status = AgentStatus::Executing;
+                }
+            }
+
+            // subhadipmitra, 2026-03-09: For OCP event types, enrich the event
+            // with actual satellite state and validate preconditions. We clone
+            // the event to avoid mutating the workload's event list.
+            let mut enriched_event = event.clone();
+            {
+                let state = self.sat_state.lock().await;
+
+                // Validate OCP preconditions (eclipse state, battery)
+                let position = self.update_orbital_state().await;
+                let in_eclipse = position.as_ref().map(|p| p.in_eclipse);
+                if let Some(reason) =
+                    ocp::validate_ocp_precondition(&event.event_type, &state, in_eclipse)
+                {
+                    warn!(
+                        event_type = %event.event_type,
+                        reason = %reason,
+                        "OCP precondition warning (continuing replay)"
+                    );
+                    enriched_event.payload["ocp_warning"] =
+                        serde_json::Value::String(reason);
+                }
+
+                // Enrich with actual satellite state
+                ocp::enrich_event(&mut enriched_event, &state);
+
+                // subhadipmitra, 2026-03-10: WS4 — Enrich constellation events
+                let position = self.update_orbital_state().await;
+                constellation::enrich_event(&mut enriched_event, &state, position.as_ref());
+            }
+
+            // Report enriched event to Console API
             self.client
-                .report_event(&workload.deployment_id, event)
+                .report_event(&workload.deployment_id, &enriched_event)
                 .await
                 .unwrap_or_else(|e| {
                     warn!(error = %e, "Failed to report event, continuing");
@@ -264,6 +402,18 @@ impl Agent for SimulatedSatellite {
         {
             let mut status = self.status.lock().await;
             *status = AgentStatus::Idle;
+        }
+
+        // subhadipmitra, 2026-03-10: WS4 — Log constellation execution summary.
+        if constellation_state.steps_assigned() > 0 {
+            info!(
+                deployment_id = %workload.deployment_id,
+                steps_assigned = constellation_state.steps_assigned(),
+                steps_completed = constellation_state.steps_completed(),
+                steps_failed_over = constellation_state.failed_over_steps.len(),
+                isl_data_mb = constellation_state.total_isl_data_mb,
+                "Constellation execution summary"
+            );
         }
 
         info!(
