@@ -36,6 +36,11 @@
 
 pub mod agent;
 pub mod client;
+// subhadipmitra, 2026-03-09: Orbital Compute Primitives runtime module.
+pub mod ocp;
+// subhadipmitra, 2026-03-09: I-4 HazardPredictor — deterministic eclipse-boundary
+// state preservation via hazard-predictive checkpointing.
+pub mod hazard;
 pub mod sim_client;
 pub mod simulated;
 pub mod types;
